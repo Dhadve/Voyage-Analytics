@@ -59,7 +59,7 @@ def recommend_hotels():
     try:
         data = request.get_json()
 
-        city = data.get("city")
+        city = data.get("place")
         max_price = data.get("max_price", 5000)
         min_rating = data.get("min_rating", 3)
 
@@ -87,4 +87,5 @@ def recommend_hotels():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
