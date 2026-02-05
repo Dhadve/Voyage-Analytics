@@ -94,7 +94,8 @@ with tab1:
                 st.session_state.to_city,
                 st.session_state.from_city
             )
-            st.experimental_rerun()
+            st.rerun()
+
 
     distance = estimate_distance(st.session_state.from_city, st.session_state.to_city)
     st.info(f"📏 Estimated Distance: **{distance} km**")
