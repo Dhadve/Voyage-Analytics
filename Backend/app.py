@@ -12,6 +12,8 @@ feature_names = joblib.load("model/feature_names.pkl")
 
 # Load hotel data
 hotels_df = pd.read_csv("data/hotels.csv")
+print(hotels_df.columns.tolist())
+
 
 
 # ================= HEALTH CHECK =================
@@ -90,6 +92,7 @@ def recommend_hotels():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
