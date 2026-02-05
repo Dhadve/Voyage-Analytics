@@ -62,23 +62,47 @@ def recommend_hotels():
         data = request.get_json()
 
         place = data.get("place")
+        days = data.get("days")   # 🔑 NEW
         max_price = data.get("max_price", 5000)
         max_total = data.get("max_total", 20000)
 
+        # ---- VALIDATION ----
         if not place:
             return jsonify({"error": "place is required"}), 400
 
-        results = hotels_df[
+        if days is None:
+            return jsonify({"error": "days is required"}), 400
+
+        # ---- FILTER DATA ----
+        filtered = hotels_df[
             (hotels_df["place"] == place) &
+            (hotels_df["days"] == days) &
             (hotels_df["price"] <= max_price) &
             (hotels_df["total"] <= max_total)
-        ].sort_values(
-            by=["price", "total"],
-            ascending=[True, True]
+        ]
+
+        if filtered.empty:
+            return jsonify({
+                "message": "No hotels found matching criteria"
+            }), 200
+
+        # ---- UNIQUE HOTEL RECOMMENDATION ----
+        recommendations = (
+            filtered
+            .groupby(["name", "place", "days"], as_index=False)
+            .agg({
+                "price": "mean",
+                "total": "min"
+            })
+            .sort_values(
+                by=["price", "total"],
+                ascending=[True, True]
+            )
+            .head(5)
         )
 
         return jsonify({
-            "recommended_hotels": results.head(5).to_dict(orient="records")
+            "recommended_hotels": recommendations.to_dict(orient="records")
         })
 
     except Exception as e:
@@ -91,6 +115,7 @@ def recommend_hotels():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
 
