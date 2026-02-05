@@ -1,9 +1,10 @@
 import streamlit as st
-import requests
 import pandas as pd
+import joblib
+import requests
 
 # ================= CONFIG =================
-API_BASE_URL = "https://voyage-analytics-r34b.onrender.com"  # 🔴 CHANGE THIS
+BACKEND_URL = "https://voyage-analytics-r34b.onrender.com"
 
 st.set_page_config(
     page_title="Voyage Analytics",
@@ -11,69 +12,64 @@ st.set_page_config(
     layout="wide"
 )
 
-# ================= CUSTOM CSS =================
-st.markdown("""
-<style>
-.main {
-    background-color: #f8fafc;
-}
-.block-container {
-    padding-top: 2rem;
-}
-h1, h2, h3 {
-    color: #0f172a;
-}
-.card {
-    background-color: white;
-    padding: 1.5rem;
-    border-radius: 12px;
-    box-shadow: 0px 4px 20px rgba(0,0,0,0.05);
-}
-</style>
-""", unsafe_allow_html=True)
+# ================= LOAD FEATURE NAMES =================
+@st.cache_resource
+def load_feature_names():
+    return joblib.load("feature_names.pkl")
+
+feature_names = load_feature_names()
+
+# ================= EXTRACT DROPDOWN VALUES =================
+def extract_values(prefix):
+    return sorted([
+        col.replace(prefix, "")
+        for col in feature_names
+        if col.startswith(prefix)
+    ])
+
+FROM_CITIES = extract_values("from_")
+TO_CITIES = extract_values("to_")
+AGENCIES = extract_values("agency_")
+FLIGHT_TYPES = extract_values("flightType_")
 
 # ================= HEADER =================
-st.markdown("<h1>✈️ Voyage Analytics</h1>", unsafe_allow_html=True)
-st.caption("Flight Price Prediction & Hotel Recommendation System")
+st.markdown(
+    """
+    <h1 style='text-align:center;'>✈️ Voyage Analytics</h1>
+    <p style='text-align:center;color:gray;'>
+    Smart Flight Price Prediction & Hotel Recommendations
+    </p>
+    """,
+    unsafe_allow_html=True
+)
 
 st.divider()
 
 # ================= TABS =================
-tab1, tab2 = st.tabs(["✈️ Flight Price Prediction", "🏨 Hotel Recommendation"])
+tab1, tab2 = st.tabs(["✈️ Flight Price Predictor", "🏨 Hotel Recommender"])
 
-# ================= FLIGHT PRICE =================
+# ================= FLIGHT TAB =================
 with tab1:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.subheader("Predict Flight Price")
+    st.subheader("Flight Price Prediction")
 
-    col1, col2 = st.columns(2)
+    with st.form("flight_form"):
+        col1, col2, col3 = st.columns(3)
 
-    with col1:
-        from_city = st.selectbox(
-            "From",
-            ["Brasilia (DF)", "Recife (PE)"]
-        )
+        with col1:
+            from_city = st.selectbox("From", FROM_CITIES)
+            agency = st.selectbox("Agency", AGENCIES)
 
-        to_city = st.selectbox(
-            "To",
-            ["Brasilia (DF)", "Recife (PE)"]
-        )
+        with col2:
+            to_city = st.selectbox("To", TO_CITIES)
+            flight_type = st.selectbox("Flight Type", FLIGHT_TYPES)
 
-        agency = st.selectbox(
-            "Agency",
-            ["CloudNine", "FlyingDrops", "Rainbow"]
-        )
+        with col3:
+            distance = st.number_input("Distance (km)", min_value=50, step=10)
+            day = st.slider("Day of Month", 1, 31, 15)
 
-    with col2:
-        flight_type = st.selectbox(
-            "Flight Type",
-            ["economy", "business", "firstClass", "premium"]
-        )
+        submit_flight = st.form_submit_button("🔍 Predict Price")
 
-        distance = st.number_input("Distance (km)", min_value=100, value=1000)
-        day = st.slider("Day of Month", 1, 31, 15)
-
-    if st.button("Predict Price 🚀"):
+    if submit_flight:
         payload = {
             "from": from_city,
             "to": to_city,
@@ -83,62 +79,60 @@ with tab1:
             "day": day
         }
 
-        try:
-            res = requests.post(f"{API_BASE_URL}/predict-flight", json=payload)
-            result = res.json()
+        with st.spinner("Predicting flight price..."):
+            res = requests.post(
+                f"{BACKEND_URL}/predict-flight",
+                json=payload
+            )
 
-            if "predicted_price" in result:
-                st.success(f"💰 Estimated Price: ₹ {result['predicted_price']}")
-            else:
-                st.error(result.get("error", "Prediction failed"))
+        if res.status_code == 200:
+            price = res.json()["predicted_price"]
+            st.success(f"💰 **Predicted Price:** ₹ {price}")
+        else:
+            st.error(res.json().get("error", "Prediction failed"))
 
-        except Exception as e:
-            st.error(str(e))
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# ================= HOTEL RECOMMENDER =================
+# ================= HOTEL TAB =================
 with tab2:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.subheader("Find Best Hotels")
+    st.subheader("Hotel Recommendation")
 
-    col1, col2 = st.columns(2)
+    with st.form("hotel_form"):
+        col1, col2, col3 = st.columns(3)
 
-    with col1:
-        place = st.selectbox(
-            "Destination",
-            ["Florianopolis (SC)", "Salvador (BH)"]
-        )
+        with col1:
+            place = st.selectbox("Destination City", TO_CITIES)
 
-        days = st.number_input("Number of Days", min_value=1, value=1)
+        with col2:
+            days = st.number_input("Number of Days", min_value=1, max_value=30, value=3)
 
-    with col2:
-        max_price = st.number_input("Max Price / Night", value=500)
-        max_total = st.number_input("Max Total Budget", value=5000)
+        with col3:
+            max_total = st.number_input("Max Total Budget (₹)", min_value=1000, step=500)
 
-    if st.button("Recommend Hotels 🏨"):
+        submit_hotel = st.form_submit_button("🏨 Recommend Hotels")
+
+    if submit_hotel:
         payload = {
             "place": place,
             "days": days,
-            "max_price": max_price,
             "max_total": max_total
         }
 
-        try:
-            res = requests.post(f"{API_BASE_URL}/recommend-hotels", json=payload)
-            result = res.json()
+        with st.spinner("Finding best hotels..."):
+            res = requests.post(
+                f"{BACKEND_URL}/recommend-hotels",
+                json=payload
+            )
 
-            if "recommended_hotels" in result and result["recommended_hotels"]:
-                df = pd.DataFrame(result["recommended_hotels"])
-                st.dataframe(df, use_container_width=True)
+        if res.status_code == 200:
+            hotels = res.json()["recommended_hotels"]
+
+            if hotels:
+                df = pd.DataFrame(hotels)
+                st.dataframe(
+                    df[["name", "price", "days", "total"]],
+                    use_container_width=True
+                )
             else:
-                st.warning("No hotels found for given criteria")
+                st.warning("No hotels found within budget.")
+        else:
+            st.error(res.json().get("error", "Hotel recommendation failed"))
 
-        except Exception as e:
-            st.error(str(e))
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# ================= FOOTER =================
-st.divider()
-st.caption("Built with ❤️ using Streamlit | ML-Powered Travel Analytics")
