@@ -5,57 +5,43 @@ import os
 
 app = Flask(__name__)
 
-# Load ML model
+# ================= LOAD ARTIFACTS =================
 model = joblib.load("model/flight_price_model.pkl")
+scaler = joblib.load("model/scaler.pkl")
+feature_names = joblib.load("model/feature_names.pkl")
 
 # Load hotel data
 hotels_df = pd.read_csv("data/hotels.csv")
 
-# === FEATURES USED DURING TRAINING (VERY IMPORTANT) ===
-FEATURE_COLUMNS = [
-    "distance",
-    "day",
 
-    # from
-    "from_Brasilia (DF)",
-    "from_Recife (PE)",
-
-    # to
-    "to_Brasilia (DF)",
-    "to_Recife (PE)",
-
-    # agency
-    "agency_CloudNine",
-    "agency_FlyingDrops",
-    "agency_Rainbow",
-
-    # flightType
-    "flightType_economy",
-    "flightType_business",
-    "flightType_firstClass",
-    "flightType_premium"
-]
-
+# ================= HEALTH CHECK =================
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"status": "Flight Price API running"})
+    return jsonify({"status": "Voyage Analytics API running"})
 
-# ================= FLIGHT PRICE API =================
-@app.route("/predict", methods=["POST"])
-def predict():
+
+# ================= FLIGHT PRICE PREDICTION =================
+@app.route("/predict-flight", methods=["POST"])
+def predict_flight():
     try:
         data = request.get_json()
 
+        # Convert input to DataFrame
         df = pd.DataFrame([data])
 
+        # One-hot encode categorical features
         df = pd.get_dummies(
             df,
             columns=["from", "to", "agency", "flightType"],
             drop_first=False
         )
 
-        # Align features
-        df = df.reindex(columns=FEATURE_COLUMNS, fill_value=0)
+        # 🔑 ALIGN WITH TRAINING FEATURES
+        df = df.reindex(columns=feature_names, fill_value=0)
+
+        # 🔑 SCALE NUMERIC FEATURES ONLY
+        numeric_cols = ["distance", "day"]
+        df[numeric_cols] = scaler.transform(df[numeric_cols])
 
         prediction = model.predict(df)[0]
 
@@ -67,9 +53,9 @@ def predict():
         return jsonify({"error": str(e)}), 500
 
 
-# ================= HOTEL RECOMMENDER API =================
-@app.route("/recommend-hotel", methods=["POST"])
-def recommend_hotel():
+# ================= HOTEL RECOMMENDER =================
+@app.route("/recommend-hotels", methods=["POST"])
+def recommend_hotels():
     try:
         data = request.get_json()
 
@@ -80,7 +66,7 @@ def recommend_hotel():
         if not city:
             return jsonify({"error": "city is required"}), 400
 
-        filtered = hotels_df[
+        results = hotels_df[
             (hotels_df["city"] == city) &
             (hotels_df["price_per_night"] <= max_price) &
             (hotels_df["rating"] >= min_rating)
@@ -90,13 +76,15 @@ def recommend_hotel():
         )
 
         return jsonify({
-            "recommended_hotels": filtered.head(5).to_dict(orient="records")
+            "recommended_hotels": results.head(5).to_dict(orient="records")
         })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
+# ================= RUN APP =================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
