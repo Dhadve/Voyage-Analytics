@@ -7,58 +7,111 @@ import altair as alt
 
 # ================= CONFIG =================
 st.set_page_config(
-    page_title="Voyage Analytics",
+    page_title="Voyage Analytics Pro",
     page_icon="✈️",
     layout="wide"
 )
 
 BACKEND_URL = "https://voyage-analytics-r34b.onrender.com"
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# ================= DARK GLASSMORPHISM CSS =================
+st.markdown("""
+<style>
+body {
+    background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+}
+.block-container {
+    padding-top: 2rem;
+}
+.glass-card {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(12px);
+    padding: 20px;
+    border-radius: 15px;
+    margin-bottom: 15px;
+    box-shadow: 0 8px 32px 0 rgba(0,0,0,0.3);
+    transition: 0.3s ease-in-out;
+}
+.glass-card:hover {
+    transform: scale(1.02);
+}
+.metric-box {
+    background: rgba(0,0,0,0.4);
+    padding: 20px;
+    border-radius: 15px;
+    text-align: center;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ================= LOGIN SYSTEM =================
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if "username" not in st.session_state:
+    st.session_state.username = ""
+
+if "history" not in st.session_state:
+    st.session_state.history = []
+
+def login_page():
+    st.title("🔐 Login to Voyage Analytics")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        if username and password:
+            st.session_state.logged_in = True
+            st.session_state.username = username
+            st.rerun()
+        else:
+            st.error("Enter valid credentials")
+
+if not st.session_state.logged_in:
+    login_page()
+    st.stop()
+
+# ================= LOAD FEATURE NAMES =================
+@st.cache_resource
+def load_feature_names():
+    return joblib.load(os.path.join(BASE_DIR, "feature_names.pkl"))
+
+feature_names = load_feature_names()
+
 # ================= HEADER =================
-st.markdown(
-    """
-# ✈️ Voyage Analytics
-### Smart Flight Pricing + Hotel Planning System
-"""
-)
+st.title("✈️ Voyage Analytics Pro")
+st.caption(f"Welcome, {st.session_state.username}")
 
-st.divider()
+tab1, tab2 = st.tabs(["✈️ Flight Planning", "🏨 Hotel Planning"])
 
-tab1, tab2 = st.tabs(["✈️ Plan Flight", "🏨 Plan Stay"])
-
-# =====================================================
-# ✈️ FLIGHT TAB
-# =====================================================
-
+# ================= FLIGHT TAB =================
 with tab1:
-
-    st.subheader("Flight Planner")
+    from_options = sorted([c.replace("from_", "") for c in feature_names if c.startswith("from_")])
+    to_options = sorted([c.replace("to_", "") for c in feature_names if c.startswith("to_")])
+    agency_options = sorted([c.replace("agency_", "") for c in feature_names if c.startswith("agency_")])
+    flight_type_options = sorted([c.replace("flightType_", "") for c in feature_names if c.startswith("flightType_")])
 
     col1, col2, col3 = st.columns(3)
 
-    from_city = col1.selectbox("From", [
-        "Recife (PE)", "Brasilia (DF)", "Sao Paulo (SP)",
-        "Rio de Janeiro (RJ)", "Natal (RN)",
-        "Florianopolis (SC)", "Salvador (BH)", "Aracaju (SE)"
-    ])
+    with col1:
+        from_city = st.selectbox("From", from_options)
 
-    to_options = [c for c in [
-        "Recife (PE)", "Brasilia (DF)", "Sao Paulo (SP)",
-        "Rio de Janeiro (RJ)", "Natal (RN)",
-        "Florianopolis (SC)", "Salvador (BH)", "Aracaju (SE)"
-    ] if c != from_city]
+    with col2:
+        to_options_filtered = [city for city in to_options if city != from_city]
+        to_city = st.selectbox("To", to_options_filtered)
 
-    to_city = col2.selectbox("To", to_options)
+    with col3:
+        if st.button("🔄 Swap Cities"):
+            from_city, to_city = to_city, from_city
 
-    day = col3.number_input("Day", min_value=1, max_value=31, value=10)
+    day = st.slider("Travel Day", 1, 31, 10)
+    agency = st.selectbox("Agency", agency_options)
+    flight_type = st.selectbox("Flight Type", flight_type_options)
+    distance = 1000  # simple default
 
-    agency = col1.selectbox("Agency", ["CloudFy", "FlyingDrops", "Rainbow"])
-    flight_type = col2.selectbox("Class", ["economic", "premium", "firstClass"])
-
-    distance = col3.number_input("Distance (km)", min_value=200, value=1000)
-
-    if st.button("🔍 Predict Price"):
-
+    if st.button("💰 Predict Flight Price"):
         payload = {
             "from": from_city,
             "to": to_city,
@@ -73,52 +126,37 @@ with tab1:
         if res.status_code == 200:
             price = res.json()["predicted_price"]
 
-            # 🔥 METRIC CARD
-            st.metric("💰 Flight Price", f"₹ {price}")
+            st.session_state.flight_price = price
+            st.session_state.destination = to_city
 
-            # 📈 Price Simulation Chart
-            trend_df = pd.DataFrame({
-                "Day": list(range(1, 31)),
-                "Estimated Price": [
-                    price * (0.9 + d * 0.004) for d in range(30)
-                ]
+            st.markdown(f"""
+            <div class="metric-box">
+                <h2>Estimated Flight Price</h2>
+                <h1>₹ {price}</h1>
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.session_state.history.append({
+                "from": from_city,
+                "to": to_city,
+                "flight_price": price
             })
-
-            chart = alt.Chart(trend_df).mark_line().encode(
-                x="Day",
-                y="Estimated Price"
-            )
-
-            st.altair_chart(chart, use_container_width=True)
 
         else:
             st.error(res.json())
 
-# =====================================================
-# 🏨 HOTEL TAB
-# =====================================================
-
+# ================= HOTEL TAB =================
 with tab2:
+    if "destination" in st.session_state:
+        place = st.session_state.destination
+        st.info(f"Hotel city auto-selected: {place}")
+    else:
+        place = st.text_input("Destination City")
 
-    st.subheader("Hotel Planner")
-
-    col1, col2, col3 = st.columns(3)
-
-    place = col1.selectbox(
-        "Destination",
-        [
-            "Recife (PE)", "Brasilia (DF)", "Sao Paulo (SP)",
-            "Rio de Janeiro (RJ)", "Natal (RN)",
-            "Florianopolis (SC)", "Salvador (BH)", "Aracaju (SE)"
-        ]
-    )
-
-    days = col2.number_input("Stay (Days)", min_value=1, value=2)
-
-    max_total = col3.number_input("Max Budget", value=20000)
+    days = st.number_input("Stay Duration (Days)", 1, 30, 2)
+    max_total = st.number_input("Total Budget", value=20000)
 
     if st.button("🏨 Find Hotels"):
-
         payload = {
             "place": place,
             "days": days,
@@ -128,20 +166,39 @@ with tab2:
         res = requests.post(f"{BACKEND_URL}/recommend-hotels", json=payload)
 
         if res.status_code == 200:
-            hotels = res.json().get("recommended_hotels", [])
+            hotels = res.json()["recommended_hotels"]
 
-            if hotels:
-                df = pd.DataFrame(hotels)
+            for hotel in hotels:
+                flight_price = st.session_state.get("flight_price", 0)
+                total_trip = hotel["calculated_total"] + flight_price
 
-                # 🔥 Trip Cost Summary Card
-                cheapest = df.iloc[0]["calculated_total"]
+                budget_status = "✅ Within Budget"
+                if total_trip > max_total:
+                    budget_status = "❌ Over Budget"
 
-                st.metric("💼 Cheapest Stay", f"₹ {cheapest}")
-
-                st.dataframe(df, use_container_width=True)
-
-            else:
-                st.warning("No hotels found under this budget.")
+                st.markdown(f"""
+                <div class="glass-card">
+                    <h3>{hotel['name']}</h3>
+                    <p>Price per night: ₹ {hotel['price']}</p>
+                    <p>Stay Cost: ₹ {hotel['calculated_total']}</p>
+                    <p><b>Total Trip Cost: ₹ {total_trip}</b></p>
+                    <p>{budget_status}</p>
+                </div>
+                """, unsafe_allow_html=True)
 
         else:
             st.error(res.json())
+
+# ================= SIDEBAR HISTORY =================
+st.sidebar.title("📜 Booking History")
+
+if st.session_state.history:
+    for h in st.session_state.history[::-1]:
+        st.sidebar.write(f"{h['from']} ➜ {h['to']} | ₹ {h['flight_price']}")
+
+if st.sidebar.button("Logout"):
+    st.session_state.logged_in = False
+    st.session_state.username = ""
+    st.session_state.history = []
+    st.rerun()
+
