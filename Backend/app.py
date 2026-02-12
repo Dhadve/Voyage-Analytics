@@ -72,21 +72,36 @@ def recommend_hotels():
         if not place:
             return jsonify({"error": "place is required"}), 400
 
-        # Filter by place
-        filtered = hotels_df[hotels_df["place"] == place]
+        # 1️⃣ Filter by city
+        filtered = hotels_df[hotels_df["place"] == place].copy()
 
-        # Calculate total stay cost
+        if filtered.empty:
+            return jsonify({"recommended_hotels": []})
+
+        # 2️⃣ Remove duplicate hotel names
+        filtered = filtered.drop_duplicates(subset=["name"])
+
+        # 3️⃣ Recalculate total based on USER entered days
         filtered["calculated_total"] = filtered["price"] * days
 
-        # Apply budget filter
+        # 4️⃣ Apply budget filter
         filtered = filtered[
             filtered["calculated_total"] <= max_total
-        ].sort_values(
-            by=["calculated_total"],
+        ]
+
+        # 5️⃣ Sort by lowest total cost
+        filtered = filtered.sort_values(
+            by="calculated_total",
             ascending=True
         )
 
-        result = filtered.head(5).to_dict(orient="records")
+        # 6️⃣ Return only necessary clean fields
+        result = filtered[[
+            "name",
+            "place",
+            "price",
+            "calculated_total"
+        ]].head(5).to_dict(orient="records")
 
         return jsonify({
             "recommended_hotels": result
@@ -96,9 +111,11 @@ def recommend_hotels():
         return jsonify({"error": str(e)}), 500
 
 
+
 # =====================================================
 # ================= RUN (LOCAL ONLY) ==================
 # =====================================================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
