@@ -6,15 +6,14 @@ import os
 app = Flask(__name__)
 
 # ================= LOAD ARTIFACTS =================
-model = joblib.load("model/flight_price_model.pkl")
-scaler = joblib.load("model/scaler.pkl")
-feature_names = joblib.load("model/feature_names.pkl")
+MODEL_PATH = "model/flight_price_model.pkl"
+FEATURE_PATH = "model/feature_names.pkl"
+
+model = joblib.load(MODEL_PATH)
+feature_names = joblib.load(FEATURE_PATH)
 
 # Load hotel data
 hotels_df = pd.read_csv("data/hotels.csv")
-print(hotels_df.columns.tolist())
-
-
 
 # ================= HEALTH CHECK =================
 @app.route("/", methods=["GET"])
@@ -22,28 +21,28 @@ def home():
     return jsonify({"status": "Voyage Analytics API running"})
 
 
-# ================= FLIGHT PRICE PREDICTION =================
+# =====================================================
+# ================= FLIGHT PRICE API ==================
+# =====================================================
 @app.route("/predict-flight", methods=["POST"])
 def predict_flight():
     try:
         data = request.get_json()
 
-        # Convert input to DataFrame
+        if not data:
+            return jsonify({"error": "No JSON payload received"}), 400
+
         df = pd.DataFrame([data])
 
-        # One-hot encode categorical features
+        # One-hot encode categorical columns
         df = pd.get_dummies(
             df,
             columns=["from", "to", "agency", "flightType"],
             drop_first=False
         )
 
-        # 🔑 ALIGN WITH TRAINING FEATURES
+        # Align features with training
         df = df.reindex(columns=feature_names, fill_value=0)
-
-        # 🔑 SCALE NUMERIC FEATURES ONLY
-        numeric_cols = ["distance", "day"]
-        df[numeric_cols] = scaler.transform(df[numeric_cols])
 
         prediction = model.predict(df)[0]
 
@@ -55,69 +54,51 @@ def predict_flight():
         return jsonify({"error": str(e)}), 500
 
 
+# =====================================================
 # ================= HOTEL RECOMMENDER =================
+# =====================================================
 @app.route("/recommend-hotels", methods=["POST"])
 def recommend_hotels():
     try:
         data = request.get_json()
 
-        place = data.get("place")
-        days = data.get("days")   # 🔑 NEW
-        max_price = data.get("max_price", 5000)
-        max_total = data.get("max_total", 20000)
+        if not data:
+            return jsonify({"error": "No JSON payload received"}), 400
 
-        # ---- VALIDATION ----
+        place = data.get("place")
+        days = int(data.get("days", 1))
+        max_total = float(data.get("max_total", 20000))
+
         if not place:
             return jsonify({"error": "place is required"}), 400
 
-        if days is None:
-            return jsonify({"error": "days is required"}), 400
+        # Filter by place
+        filtered = hotels_df[hotels_df["place"] == place]
 
-        # ---- FILTER DATA ----
-        filtered = hotels_df[
-            (hotels_df["place"] == place) &
-            (hotels_df["days"] == days) &
-            (hotels_df["price"] <= max_price) &
-            (hotels_df["total"] <= max_total)
-        ]
+        # Calculate total stay cost
+        filtered["calculated_total"] = filtered["price"] * days
 
-        if filtered.empty:
-            return jsonify({
-                "message": "No hotels found matching criteria"
-            }), 200
-
-        # ---- UNIQUE HOTEL RECOMMENDATION ----
-        recommendations = (
-            filtered
-            .groupby(["name", "place", "days"], as_index=False)
-            .agg({
-                "price": "mean",
-                "total": "min"
-            })
-            .sort_values(
-                by=["price", "total"],
-                ascending=[True, True]
-            )
-            .head(5)
+        # Apply budget filter
+        filtered = filtered[
+            filtered["calculated_total"] <= max_total
+        ].sort_values(
+            by=["calculated_total"],
+            ascending=True
         )
 
+        result = filtered.head(5).to_dict(orient="records")
+
         return jsonify({
-            "recommended_hotels": recommendations.to_dict(orient="records")
+            "recommended_hotels": result
         })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-
-
-# ================= RUN APP =================
+# =====================================================
+# ================= RUN (LOCAL ONLY) ==================
+# =====================================================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
-
-
-
-
