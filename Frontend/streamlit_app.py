@@ -179,7 +179,7 @@ with tab1:
             st.markdown(f"""
             <div class="metric-box">
                 <h2>Estimated Flight Price</h2>
-                <h1>₹ {price}</h1>
+                <h1>$ {price}</h1>
             </div>
             """, unsafe_allow_html=True)
 
@@ -230,9 +230,9 @@ with tab2:
                 st.markdown(f"""
                 <div class="glass-card">
                     <h3>{hotel['name']}</h3>
-                    <p>Price per Night: ₹ {hotel['price']}</p>
-                    <p>Stay Cost: ₹ {hotel['calculated_total']}</p>
-                    <p><b>Total Trip Cost [Flight + Hotel]: ₹ {total_trip}</b></p>
+                    <p>Price per Night: $ {hotel['price']}</p>
+                    <p>Stay Cost: $ {hotel['calculated_total']}</p>
+                    <p><b>Total Trip Cost [Flight + Hotel]: $ {total_trip}</b></p>
                     <p>{status}</p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -247,7 +247,7 @@ st.sidebar.title("📜 Booking History")
 
 if st.session_state.history:
     for h in reversed(st.session_state.history):
-        st.sidebar.write(f"{h['from']} ➜ {h['to']} | ₹ {h['price']}")
+        st.sidebar.write(f"{h['from']} ➜ {h['to']} | $ {h['price']}")
 
 if st.sidebar.button("Logout"):
     st.session_state.clear()
