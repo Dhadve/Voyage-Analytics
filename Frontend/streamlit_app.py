@@ -58,7 +58,7 @@ st.markdown("""
 
     /* Ensure sidebar text is also visible */
     [data-testid="stSidebar"] * {
-        color: white !important; /* Sidebar stays white for contrast against dark panel */
+        color: Grey !important; /* Sidebar stays white for contrast against dark panel */
     }
 
     .welcome-header {
