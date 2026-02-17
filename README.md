@@ -1,4 +1,8 @@
 # Voyage-Analytics
+# Live Application
+# Streamlit App Link:
+https://voyage-analytics-jggiuvxhqg3k9wqnodthlt.streamlit.app/
+
 ## 👩‍💻 My Contribution
 
 - Data preprocessing and cleaning
